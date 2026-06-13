@@ -1,0 +1,13 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# SPA fallback: let React Router handle client-side routes like /spot/:id
+# (Netlify serves real files first, then falls back to index.html).
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
