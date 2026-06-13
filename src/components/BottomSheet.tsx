@@ -17,6 +17,8 @@ interface BottomSheetProps {
   onExpandedChange: (v: boolean) => void;
   /** px reserved at the bottom for the tab bar. */
   bottomInset?: number;
+  /** px reserved at the top (search + filter chips) so they stay visible when expanded. */
+  topInset?: number;
 }
 
 export function BottomSheet({
@@ -26,9 +28,10 @@ export function BottomSheet({
   expanded,
   onExpandedChange,
   bottomInset = 64,
+  topInset = 150,
 }: BottomSheetProps) {
   const [vh, setVh] = useState(() => window.innerHeight);
-  const expandedH = Math.round(vh * 0.84);
+  const expandedH = Math.max(peek + 80, vh - bottomInset - topInset);
   const maxOffset = Math.max(0, expandedH - peek);
 
   const [drag, setDrag] = useState<number | null>(null);
@@ -76,18 +79,18 @@ export function BottomSheet({
 
   return (
     <div
-      className="absolute inset-x-0 z-20 mx-auto max-w-md touch-none"
+      className="pointer-events-none absolute inset-x-0 z-20 mx-auto max-w-md"
       style={{ bottom: bottomInset, height: expandedH }}
     >
       <div
-        className="flex h-full flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-ink-800/95 shadow-sheet backdrop-blur-xl"
+        className="pointer-events-auto flex h-full flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-ink-800/95 shadow-sheet backdrop-blur-xl"
         style={{
           transform: `translateY(${offset}px)`,
           transition: drag === null ? 'transform 0.32s cubic-bezier(0.22,1,0.36,1)' : 'none',
         }}
       >
         <div
-          className="shrink-0 cursor-grab px-4 pt-2.5 active:cursor-grabbing"
+          className="shrink-0 cursor-grab touch-none px-4 pt-2.5 active:cursor-grabbing"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}

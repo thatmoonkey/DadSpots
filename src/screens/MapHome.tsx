@@ -15,8 +15,10 @@ import {
 export function MapHome() {
   const navigate = useNavigate();
   const mapRef = useRef<MapHandle>(null);
+  const topRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [locating, setLocating] = useState(false);
+  const [topInset, setTopInset] = useState(150);
 
   const state = useAppStore();
   const {
@@ -51,12 +53,27 @@ export function MapHome() {
     return [sel, ...visible.filter((s) => s.id !== selectedSpotId)];
   }, [visible, selectedSpotId]);
 
-  const handlePinClick = (id: string) => {
+  // Tapping a pin opens the full spot detail.
+  const handlePinClick = (id: string) => navigate(`/spot/${id}`);
+
+  // Tapping a list row recenters the map on that spot and collapses the sheet
+  // so the pin is visible (tap the pin to open its detail).
+  const handleRowClick = (id: string) => {
     const s = spots.find((x) => x.id === id);
     if (s) mapRef.current?.flyTo({ lat: s.lat, lng: s.lng }, 14);
     selectSpot(id);
-    setExpanded(true);
+    setExpanded(false);
   };
+
+  // Measure the search + chips bar so the expanded sheet stops just below it.
+  useEffect(() => {
+    const measure = () => {
+      if (topRef.current) setTopInset(topRef.current.offsetHeight + 8);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
 
   // When arriving with a spot already selected (e.g. "Show on Map"), fly to it.
   useEffect(() => {
@@ -97,6 +114,7 @@ export function MapHome() {
       />
 
       <div
+        ref={topRef}
         className="pointer-events-none absolute inset-x-0 top-0 z-20 mx-auto max-w-md space-y-3"
         style={{ paddingTop: 'calc(var(--sat) + 12px)' }}
       >
@@ -116,6 +134,7 @@ export function MapHome() {
       <BottomSheet
         expanded={expanded}
         onExpandedChange={setExpanded}
+        topInset={topInset}
         header={
           <div className="flex items-end justify-between pb-3">
             <h2 className="text-lg font-bold text-white">Nearby Spots</h2>
@@ -134,7 +153,8 @@ export function MapHome() {
               key={s.id}
               spot={s}
               distance={s.distance}
-              onClick={() => navigate(`/spot/${s.id}`)}
+              selected={s.id === selectedSpotId}
+              onClick={() => handleRowClick(s.id)}
             />
           ))}
         </div>

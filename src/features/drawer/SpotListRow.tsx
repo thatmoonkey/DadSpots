@@ -7,10 +7,12 @@ import { DadIcon, KidIcon, StarIcon } from '../../components/icons';
 export function SpotListRow({
   spot,
   distance,
+  selected,
   onClick,
 }: {
   spot: Spot & { distance?: number };
   distance?: number;
+  selected?: boolean;
   onClick: () => void;
 }) {
   const dad = dadScore(spot);
@@ -21,7 +23,9 @@ export function SpotListRow({
   return (
     <button
       onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-2xl bg-ink-700/70 p-2.5 text-left active:bg-ink-600"
+      className={`flex w-full items-center gap-3 rounded-2xl p-2.5 text-left transition-colors active:bg-ink-600 ${
+        selected ? 'bg-ink-600 ring-1 ring-dad/60' : 'bg-ink-700/70'
+      }`}
     >
       <SpotThumb spot={spot} className="h-16 w-16 shrink-0 rounded-xl" />
       <div className="min-w-0 flex-1">
