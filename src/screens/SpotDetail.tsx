@@ -5,21 +5,36 @@ import {
   DAD_FIELDS,
   KID_FIELDS,
   TAG_LABELS,
+  type DadScores,
+  type KidScores,
+  type Review,
   type Score,
   type Spot,
+  type Tag,
 } from '../data/types';
 import { dadScore, kidScore } from '../data/scoring';
 import { SpotThumb } from '../components/SpotThumb';
 import { Stars } from '../components/Score';
 import { RatingInput } from '../components/RatingInput';
-import { BackIcon, CheckIcon, DadIcon, KidIcon, PinIcon, StarIcon } from '../components/icons';
+import { TagPicker } from '../features/add/TagPicker';
+import { BackIcon, CheckIcon, DadIcon, KidIcon, PinIcon } from '../components/icons';
+
+type Group = 'dad' | 'kid';
+type Mode = 'everyone' | 'you';
+
+const fmt = (v: number) => (Number.isInteger(v) ? `${v}` : v.toFixed(1));
 
 export function SpotDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const spots = useAppStore((s) => s.spots);
+  const currentUser = useAppStore((s) => s.currentUser);
   const selectSpot = useAppStore((s) => s.selectSpot);
   const spot = spots.find((s) => s.id === id);
+
+  const myReview = spot?.reviews.find((r) => r.author.id === currentUser.id);
+  const [tab, setTab] = useState<Group>('dad');
+  const [mode, setMode] = useState<Mode>(myReview ? 'you' : 'everyone');
 
   if (!spot) {
     return (
@@ -71,195 +86,268 @@ export function SpotDetail() {
         </div>
       </div>
 
-      <div className="space-y-6 px-4 pt-5">
-        {/* Score cards */}
+      <div className="space-y-5 px-4 pt-5">
+        {/* Score totals double as tabs */}
         <div className="grid grid-cols-2 gap-3">
-          <ScoreCard tone="dad" label="Dad Score" value={dad} Icon={DadIcon} />
-          <ScoreCard tone="kid" label="Kid Score" value={kid} Icon={KidIcon} />
+          <ScoreTab
+            tone="dad"
+            label="Dad Score"
+            value={dad}
+            Icon={DadIcon}
+            active={tab === 'dad'}
+            onClick={() => setTab('dad')}
+          />
+          <ScoreTab
+            tone="kid"
+            label="Kid Score"
+            value={kid}
+            Icon={KidIcon}
+            active={tab === 'kid'}
+            onClick={() => setTab('kid')}
+          />
         </div>
 
-        {/* For Dads */}
-        <Section title="For Dads">
-          <SubScoreGrid spot={spot} fields={DAD_FIELDS} group="dad" tone="dad" />
-        </Section>
+        {/* Everyone (aggregate) vs You (your own review) */}
+        <Segmented
+          mode={mode}
+          onMode={setMode}
+          reviewCount={spot.reviews.length}
+          hasMine={!!myReview}
+        />
 
-        {spot.note && (
-          <p className="rounded-2xl bg-ink-700/60 p-4 text-sm italic text-white/75">
-            “{spot.note}”
-          </p>
+        {mode === 'everyone' ? (
+          <EveryoneView spot={spot} tab={tab} />
+        ) : (
+          <MyReviewEditor spotId={spot.id} initial={myReview} tab={tab} />
         )}
 
-        {/* For Kids */}
-        <Section title="For Kids">
-          <SubScoreGrid spot={spot} fields={KID_FIELDS} group="kid" tone="kid" />
-        </Section>
+        {/* All reviews */}
+        <AllReviews spot={spot} currentUserId={currentUser.id} />
 
-        {/* Tags */}
-        {spot.tags.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {spot.tags.map((t) => (
-              <span
-                key={t}
-                className="flex items-center gap-1.5 rounded-full bg-ink-700 px-3 py-1.5 text-sm font-medium text-white/85"
-              >
-                <CheckIcon width={14} height={14} className="text-reviewed" />
-                {TAG_LABELS[t]}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* Reviews */}
-        <Reviews spot={spot} />
-
-        <p className="pt-2 text-center text-xs text-muted">
-          Added by <span className="font-semibold text-white/80">{spot.author.name}</span>
+        <p className="pt-1 text-center text-xs text-muted">
+          First added by{' '}
+          <span className="font-semibold text-white/80">{spot.author.name}</span>
         </p>
       </div>
     </div>
   );
 }
 
-function ScoreCard({
+function ScoreTab({
   tone,
   label,
   value,
   Icon,
+  active,
+  onClick,
 }: {
-  tone: 'dad' | 'kid';
+  tone: Group;
   label: string;
   value: number;
   Icon: typeof DadIcon;
+  active: boolean;
+  onClick: () => void;
 }) {
   const isDad = tone === 'dad';
+  const base = isDad ? 'border-dad/40 bg-dad-soft' : 'border-kid/40 bg-kid-soft';
   return (
-    <div
-      className={`rounded-2xl border p-4 ${
-        isDad ? 'border-dad/30 bg-dad-soft' : 'border-kid/30 bg-kid-soft'
+    <button
+      onClick={onClick}
+      className={`rounded-2xl border p-4 text-left transition-all ${
+        active ? `${base} ring-2 ${isDad ? 'ring-dad/50' : 'ring-kid/50'}` : 'border-white/10 bg-ink-700/40 opacity-70'
       }`}
     >
-      <div className={`flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide ${isDad ? 'text-dad' : 'text-kid'}`}>
+      <div
+        className={`flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide ${
+          isDad ? 'text-dad' : 'text-kid'
+        }`}
+      >
         <Icon width={15} height={15} /> {label}
       </div>
       <div className="mt-1 text-3xl font-bold text-white">{value.toFixed(1)}</div>
       <Stars value={value} className="mt-1" />
-    </div>
+    </button>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <h3 className="mb-3 text-lg font-bold text-white">{title}</h3>
-      {children}
-    </div>
-  );
-}
-
-function SubScoreGrid({
-  spot,
-  fields,
-  group,
-  tone,
+function Segmented({
+  mode,
+  onMode,
+  reviewCount,
+  hasMine,
 }: {
-  spot: Spot;
-  fields: { key: string; label: string; icon: string }[];
-  group: 'dad' | 'kid';
-  tone: 'dad' | 'kid';
+  mode: Mode;
+  onMode: (m: Mode) => void;
+  reviewCount: number;
+  hasMine: boolean;
 }) {
-  const scores = spot[group] as Record<string, number | undefined>;
+  const opt = (m: Mode, label: string) => (
+    <button
+      onClick={() => onMode(m)}
+      className={`flex-1 rounded-lg py-1.5 text-sm font-semibold transition-colors ${
+        mode === m ? 'bg-ink-600 text-white' : 'text-muted'
+      }`}
+    >
+      {label}
+    </button>
+  );
   return (
-    <div className="grid grid-cols-2 gap-2.5">
-      {fields.map((f) => {
-        const v = scores[f.key];
-        return (
-          <div
-            key={f.key}
-            className="flex items-center justify-between rounded-xl bg-ink-700/60 px-3.5 py-3"
-          >
-            <div className="flex items-center gap-2">
-              <span className={`text-base ${tone === 'dad' ? 'text-dad' : 'text-kid'}`}>
-                {f.icon}
-              </span>
-              <span className="text-xs font-medium uppercase tracking-wide text-muted">
-                {f.label}
+    <div className="flex gap-1 rounded-xl bg-ink-800 p-1">
+      {opt('everyone', `Everyone (${reviewCount})`)}
+      {opt('you', hasMine ? 'Your review' : 'Add yours')}
+    </div>
+  );
+}
+
+function EveryoneView({ spot, tab }: { spot: Spot; tab: Group }) {
+  const fields = tab === 'dad' ? DAD_FIELDS : KID_FIELDS;
+  const scores = spot[tab] as Record<string, number | undefined>;
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-2.5">
+        {fields.map((f) => {
+          const v = scores[f.key];
+          return (
+            <div
+              key={f.key}
+              className="flex items-center justify-between rounded-xl bg-ink-700/60 px-3.5 py-3"
+            >
+              <div className="flex items-center gap-2">
+                <span className={tab === 'dad' ? 'text-dad' : 'text-kid'}>{f.icon}</span>
+                <span className="text-xs font-medium uppercase tracking-wide text-muted">
+                  {f.label}
+                </span>
+              </div>
+              <span className="text-sm font-bold text-white">
+                {typeof v === 'number' ? `${fmt(v)}/5` : '–'}
               </span>
             </div>
-            <span className="text-sm font-bold text-white">{v ? `${v}/5` : '–'}</span>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
+
+      {spot.tags.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {spot.tags.map((t) => (
+            <span
+              key={t}
+              className="flex items-center gap-1.5 rounded-full bg-ink-700 px-3 py-1.5 text-sm font-medium text-white/85"
+            >
+              <CheckIcon width={14} height={14} className="text-reviewed" />
+              {TAG_LABELS[t]}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {spot.note && (
+        <p className="rounded-2xl bg-ink-700/60 p-4 text-sm italic text-white/75">
+          “{spot.note}”
+        </p>
+      )}
+
+      <p className="text-center text-xs text-muted">
+        Community average across {spot.reviews.length}{' '}
+        {spot.reviews.length === 1 ? 'review' : 'reviews'}
+      </p>
     </div>
   );
 }
 
-function Reviews({ spot }: { spot: Spot }) {
-  const addReview = useAppStore((s) => s.addReview);
-  const [open, setOpen] = useState(false);
-  const [rating, setRating] = useState<Score>();
-  const [text, setText] = useState('');
+function MyReviewEditor({
+  spotId,
+  initial,
+  tab,
+}: {
+  spotId: string;
+  initial?: Review;
+  tab: Group;
+}) {
+  const setMyReview = useAppStore((s) => s.setMyReview);
+  const [dad, setDad] = useState<DadScores>(initial?.dad ?? {});
+  const [kid, setKid] = useState<KidScores>(initial?.kid ?? {});
+  const [tags, setTags] = useState<Tag[]>(initial?.tags ?? []);
+  const [note, setNote] = useState(initial?.note ?? '');
+  const [saved, setSaved] = useState(false);
 
-  const submit = () => {
-    if (!rating || !text.trim()) return;
-    addReview(spot.id, rating, text.trim());
-    setText('');
-    setRating(undefined);
-    setOpen(false);
+  const fields = tab === 'dad' ? DAD_FIELDS : KID_FIELDS;
+  const scores = (tab === 'dad' ? dad : kid) as Record<string, Score | undefined>;
+  const setScore = (key: string, v: Score) =>
+    tab === 'dad'
+      ? setDad((d) => ({ ...d, [key]: v }) as DadScores)
+      : setKid((k) => ({ ...k, [key]: v }) as KidScores);
+
+  const save = () => {
+    setMyReview(spotId, { dad, kid, tags, note: note.trim() || undefined });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1600);
   };
 
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2.5">
+        {fields.map((f) => (
+          <div
+            key={f.key}
+            className="flex items-center justify-between rounded-xl bg-ink-700/50 px-3.5 py-2.5"
+          >
+            <span className="flex items-center gap-2 text-sm font-medium text-white/85">
+              <span>{f.icon}</span> {f.label}
+            </span>
+            <RatingInput value={scores[f.key]} onChange={(v) => setScore(f.key, v)} tone={tab} />
+          </div>
+        ))}
+      </div>
+
+      <div className="space-y-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+          Amenities
+        </span>
+        <TagPicker value={tags} onChange={setTags} />
+      </div>
+
+      <textarea
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        rows={3}
+        placeholder="Your one-line take for the other dads…"
+        className="w-full resize-none rounded-xl bg-ink-700/50 p-3 text-[15px] text-white placeholder:text-muted focus:outline-none"
+      />
+
+      <button
+        onClick={save}
+        className="w-full rounded-xl bg-dad py-3 text-sm font-bold text-white active:opacity-90"
+      >
+        {saved ? 'Saved ✓' : initial ? 'Update your review' : 'Save your review'}
+      </button>
+      <p className="text-center text-xs text-muted">
+        Your scores blend into the community average everyone sees on the map.
+      </p>
+    </div>
+  );
+}
+
+function AllReviews({ spot, currentUserId }: { spot: Spot; currentUserId: string }) {
   const sorted = useMemo(
     () => [...spot.reviews].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [spot.reviews],
   );
-
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-lg font-bold text-white">Reviews ({sorted.length})</h3>
-        <button
-          onClick={() => setOpen((o) => !o)}
-          className="rounded-full bg-dad px-4 py-2 text-sm font-semibold text-white active:opacity-90"
-        >
-          Add Review
-        </button>
-      </div>
-
-      {open && (
-        <div className="mb-3 space-y-3 rounded-2xl border border-white/10 bg-ink-700/60 p-4">
-          <RatingInput value={rating} onChange={setRating} tone="dad" />
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            rows={3}
-            placeholder="How was it for the dads and the kids?"
-            className="w-full resize-none rounded-xl bg-ink-800 p-3 text-sm text-white placeholder:text-muted focus:outline-none"
-          />
-          <button
-            onClick={submit}
-            disabled={!rating || !text.trim()}
-            className="w-full rounded-xl bg-dad py-2.5 text-sm font-semibold text-white disabled:opacity-40"
-          >
-            Post review
-          </button>
-        </div>
-      )}
-
-      {sorted.length === 0 && !open && (
-        <div className="grid place-items-center rounded-2xl border border-white/10 bg-ink-700/40 py-10 text-center">
-          <StarIcon width={26} height={26} className="text-white/20" />
-          <p className="mt-2 text-sm font-medium text-white/70">No reviews yet</p>
-          <p className="text-xs text-muted">Be the first to review!</p>
-        </div>
-      )}
-
+      <h3 className="mb-3 text-lg font-bold text-white">Reviews ({sorted.length})</h3>
       <div className="space-y-2.5">
         {sorted.map((r) => (
           <div key={r.id} className="rounded-2xl bg-ink-700/60 p-3.5">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-white">{r.author.name}</span>
-              <Stars value={r.rating} />
+              <span className="text-sm font-semibold text-white">
+                {r.author.id === currentUserId ? 'You' : r.author.name}
+              </span>
+              <div className="flex items-center gap-3 text-xs font-semibold">
+                <span className="text-dad">Dad {dadScore(r).toFixed(1)}</span>
+                <span className="text-kid">Kid {kidScore(r).toFixed(1)}</span>
+              </div>
             </div>
-            <p className="mt-1.5 text-sm text-white/75">{r.text}</p>
+            {r.note && <p className="mt-1.5 text-sm text-white/75">{r.note}</p>}
           </div>
         ))}
       </div>

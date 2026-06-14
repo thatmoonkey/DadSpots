@@ -39,11 +39,17 @@ export interface Author {
   avatarUrl?: string;
 }
 
+/**
+ * A review IS a dad's scoring of the criteria. The community aggregate (what the
+ * map shows) is the per-criterion average across every spot's reviews.
+ */
 export interface Review {
   id: string;
   author: Author;
-  rating: Score;
-  text: string;
+  dad: DadScores;
+  kid: KidScores;
+  tags: Tag[];
+  note?: string;
   createdAt: string;
 }
 

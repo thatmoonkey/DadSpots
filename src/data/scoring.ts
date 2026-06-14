@@ -1,4 +1,40 @@
-import type { Spot } from './types';
+import {
+  DAD_FIELDS,
+  KID_FIELDS,
+  type DadScores,
+  type KidScores,
+  type Review,
+  type Spot,
+  type Tag,
+} from './types';
+
+const DAD_KEYS = DAD_FIELDS.map((f) => f.key);
+const KID_KEYS = KID_FIELDS.map((f) => f.key);
+
+/** Per-criterion average across reviews, plus the union of all amenity tags. */
+export function aggregateReviews(reviews: Review[]): {
+  dad: DadScores;
+  kid: KidScores;
+  tags: Tag[];
+} {
+  const avgKey = (vals: (number | undefined)[]): number | undefined => {
+    const nums = vals.filter((v): v is number => typeof v === 'number');
+    if (!nums.length) return undefined;
+    return Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 10) / 10;
+  };
+  const dad: Record<string, number> = {};
+  for (const key of DAD_KEYS) {
+    const v = avgKey(reviews.map((r) => r.dad[key]));
+    if (v !== undefined) dad[key] = v;
+  }
+  const kid: Record<string, number> = {};
+  for (const key of KID_KEYS) {
+    const v = avgKey(reviews.map((r) => r.kid[key]));
+    if (v !== undefined) kid[key] = v;
+  }
+  const tags = [...new Set(reviews.flatMap((r) => r.tags))];
+  return { dad: dad as DadScores, kid: kid as KidScores, tags };
+}
 
 /** Average of the present (defined) sub-scores, rounded to 1 decimal. */
 export function average(scores: Record<string, number | undefined>): number {

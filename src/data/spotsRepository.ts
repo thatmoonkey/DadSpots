@@ -1,5 +1,6 @@
 import type { Review, Spot } from './types';
 import { SEED_SPOTS } from './seed';
+import { aggregateReviews } from './scoring';
 
 /**
  * The single seam between the UI and where spots actually live.
@@ -14,7 +15,8 @@ export interface SpotsRepository {
   upsert(spot: Spot): void;
   publish(id: string): void;
   remove(id: string): void;
-  addReview(spotId: string, review: Review): void;
+  /** Create or replace a single author's review of a spot. */
+  upsertReview(spotId: string, review: Review): void;
 }
 
 const SPOTS_KEY = 'dineplay:userSpots';
@@ -37,6 +39,44 @@ function write(key: string, value: unknown): void {
   }
 }
 
+/**
+ * A spot's stored `dad`/`kid`/`tags`/`note` are its author's *first* review.
+ * Combine that with any other dads' reviews, then expose the spot with its
+ * `dad`/`kid`/`tags` set to the community aggregate (what the map shows) and
+ * `reviews` holding one entry per author (latest wins).
+ */
+// Tolerate reviews persisted by older builds (which had no per-criteria scores).
+function normalizeReview(r: Review & { text?: string }): Review {
+  return {
+    id: r.id,
+    author: r.author,
+    dad: r.dad ?? {},
+    kid: r.kid ?? {},
+    tags: r.tags ?? [],
+    note: r.note ?? r.text,
+    createdAt: r.createdAt,
+  };
+}
+
+function withAggregate(source: Spot, extra: Review[]): Spot {
+  const creatorReview: Review = {
+    id: `r_author_${source.id}`,
+    author: source.author,
+    dad: source.dad,
+    kid: source.kid,
+    tags: source.tags,
+    note: source.note,
+    createdAt: source.createdAt,
+  };
+  const byAuthor = new Map<string, Review>();
+  for (const r of [creatorReview, ...source.reviews, ...extra]) {
+    byAuthor.set(r.author.id, normalizeReview(r)); // later entries (newer) override
+  }
+  const reviews = [...byAuthor.values()];
+  const agg = aggregateReviews(reviews);
+  return { ...source, dad: agg.dad, kid: agg.kid, tags: agg.tags, reviews };
+}
+
 class LocalSpotsRepository implements SpotsRepository {
   list(): Spot[] {
     const userSpots = read<Spot[]>(SPOTS_KEY, []);
@@ -44,10 +84,7 @@ class LocalSpotsRepository implements SpotsRepository {
     const byId = new Map<string, Spot>();
     for (const s of SEED_SPOTS) byId.set(s.id, s);
     for (const s of userSpots) byId.set(s.id, s); // user copy overrides seed
-    return [...byId.values()].map((s) => {
-      const extra = extraReviews[s.id];
-      return extra ? { ...s, reviews: [...s.reviews, ...extra] } : s;
-    });
+    return [...byId.values()].map((s) => withAggregate(s, extraReviews[s.id] ?? []));
   }
 
   get(id: string): Spot | undefined {
@@ -76,9 +113,12 @@ class LocalSpotsRepository implements SpotsRepository {
     write(SPOTS_KEY, userSpots);
   }
 
-  addReview(spotId: string, review: Review): void {
+  upsertReview(spotId: string, review: Review): void {
     const extraReviews = read<Record<string, Review[]>>(REVIEWS_KEY, {});
-    extraReviews[spotId] = [...(extraReviews[spotId] ?? []), review];
+    const rest = (extraReviews[spotId] ?? []).filter(
+      (r) => r.author.id !== review.author.id,
+    );
+    extraReviews[spotId] = [...rest, review];
     write(REVIEWS_KEY, extraReviews);
   }
 }

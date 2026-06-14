@@ -1,5 +1,14 @@
 import { create } from 'zustand';
-import type { Author, Review, Score, Spot, SpotStatus } from '../data/types';
+import type {
+  Author,
+  DadScores,
+  KidScores,
+  Review,
+  Score,
+  Spot,
+  SpotStatus,
+  Tag,
+} from '../data/types';
 import { repo } from '../data/spotsRepository';
 import { DADS } from '../data/seed';
 import { distanceKm } from '../data/scoring';
@@ -36,7 +45,11 @@ interface AppState {
   publishDraft: (id: string) => void;
   discardDraft: () => void;
 
-  addReview: (spotId: string, rating: Score, text: string) => void;
+  /** Create or update the current user's own review (their criteria scores). */
+  setMyReview: (
+    spotId: string,
+    data: { dad: DadScores; kid: KidScores; tags: Tag[]; note?: string },
+  ) => void;
 }
 
 const CAPE_TOWN: LatLng = { lat: -33.95, lng: 18.46 };
@@ -89,7 +102,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!id) return;
     const draft = repo.get(id);
     if (!draft) return;
-    repo.upsert({ ...draft, lat: loc.lat, lng: loc.lng });
+    repo.upsert({ ...draft, lat: loc.lat, lng: loc.lng, reviews: [] });
     set({ spots: repo.list() });
   },
 
@@ -98,7 +111,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!id) return;
     const draft = repo.get(id);
     if (!draft) return;
-    repo.upsert({ ...draft, ...patch });
+    repo.upsert({ ...draft, ...patch, reviews: [] });
     set({ spots: repo.list() });
   },
 
@@ -107,7 +120,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!id) return;
     const draft = repo.get(id);
     if (!draft) return;
-    const updated = { ...draft, [group]: { ...draft[group], [key]: value } };
+    const updated = { ...draft, [group]: { ...draft[group], [key]: value }, reviews: [] };
     repo.upsert(updated as Spot);
     set({ spots: repo.list() });
   },
@@ -120,7 +133,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         Object.keys(draft.dad).length || Object.keys(draft.kid).length
           ? 'reviewed'
           : 'to_visit';
-      repo.upsert({ ...draft, status });
+      repo.upsert({ ...draft, status, reviews: [] });
     }
     repo.publish(id);
     set({ draftId: null, spots: repo.list(), selectedSpotId: id });
@@ -132,15 +145,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ draftId: null, spots: repo.list() });
   },
 
-  addReview: (spotId, rating, text) => {
+  setMyReview: (spotId, data) => {
     const review: Review = {
       id: `r_${crypto.randomUUID().slice(0, 8)}`,
       author: get().currentUser,
-      rating,
-      text,
+      dad: data.dad,
+      kid: data.kid,
+      tags: data.tags,
+      note: data.note,
       createdAt: new Date().toISOString(),
     };
-    repo.addReview(spotId, review);
+    repo.upsertReview(spotId, review);
     set({ spots: repo.list() });
   },
 }));
