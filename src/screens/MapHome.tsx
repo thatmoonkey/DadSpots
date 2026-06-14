@@ -72,8 +72,9 @@ export function MapHome() {
     setExpanded(false);
   };
 
-  // Tapping a card: focus it; tapping the already-focused card opens its detail.
-  const handleCardClick = (id: string) => {
+  // Tapping a pin or its card: focus it; tapping the already-focused one opens
+  // its detail.
+  const handleSpotTap = (id: string) => {
     if (id === selectedSpotId) navigate(`/spot/${id}`);
     else focusSpot(id);
   };
@@ -134,7 +135,7 @@ export function MapHome() {
         selectedId={selectedSpotId}
         filter={filter}
         userLocation={userLocation}
-        onSpotClick={focusSpot}
+        onSpotClick={handleSpotTap}
         onMapClick={handleBackgroundClick}
         onMoveEnd={setMapCenter}
       />
@@ -194,12 +195,12 @@ export function MapHome() {
               spot={s}
               distance={s.distance}
               selected={s.id === selectedSpotId}
-              onClick={() => handleCardClick(s.id)}
+              onClick={() => handleSpotTap(s.id)}
             />
           ))}
           {selectedSpot && (
             <p className="px-1 pt-1 text-center text-xs text-muted">
-              Tap the card for full details · tap the map to clear
+              Tap again for full details · tap the map to clear
             </p>
           )}
         </div>
