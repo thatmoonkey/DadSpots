@@ -7,15 +7,19 @@ import Map, {
 } from 'react-map-gl/maplibre';
 import type { Spot } from '../../data/types';
 import { satelliteStyle, CAPE_TOWN_VIEW } from './mapStyle';
-import type { LatLng } from '../../store/useAppStore';
+import type { FilterKey, LatLng } from '../../store/useAppStore';
 
 export interface MapHandle {
   flyTo: (loc: LatLng, zoom?: number) => void;
 }
 
+type Emphasis = 'selected' | 'normal' | 'faded';
+
 interface MapViewProps {
   spots: Spot[];
   selectedId?: string | null;
+  /** When set (and nothing selected), pins not matching the filter fade back. */
+  filter?: FilterKey;
   userLocation?: LatLng | null;
   draft?: Spot | null;
   draggableDraft?: boolean;
@@ -30,6 +34,7 @@ export const MapView = forwardRef<MapHandle, MapViewProps>(function MapView(
   {
     spots,
     selectedId,
+    filter = 'all',
     userLocation,
     draft,
     draggableDraft,
@@ -42,6 +47,12 @@ export const MapView = forwardRef<MapHandle, MapViewProps>(function MapView(
   ref,
 ) {
   const mapRef = useRef<MapRef>(null);
+
+  const emphasisOf = (s: Spot): Emphasis => {
+    if (selectedId) return s.id === selectedId ? 'selected' : 'faded';
+    if (filter !== 'all' && s.status !== filter) return 'faded';
+    return 'normal';
+  };
 
   useImperativeHandle(ref, () => ({
     flyTo: (loc, zoom = 14) =>
@@ -81,17 +92,25 @@ export const MapView = forwardRef<MapHandle, MapViewProps>(function MapView(
         </Marker>
       )}
 
-      {spots.map((s) => (
-        <Marker
-          key={s.id}
-          longitude={s.lng}
-          latitude={s.lat}
-          anchor="bottom"
-          onClick={() => onSpotClick?.(s.id)}
-        >
-          <SpotPin spot={s} selected={s.id === selectedId} />
-        </Marker>
-      ))}
+      {spots.map((s) => {
+        const emphasis = emphasisOf(s);
+        return (
+          <Marker
+            key={s.id}
+            longitude={s.lng}
+            latitude={s.lat}
+            anchor="bottom"
+            style={{ zIndex: emphasis === 'selected' ? 10 : emphasis === 'faded' ? 1 : 2 }}
+            onClick={(e) => {
+              // Don't let the click fall through to the map (which deselects).
+              e.originalEvent?.stopPropagation();
+              onSpotClick?.(s.id);
+            }}
+          >
+            <SpotPin spot={s} emphasis={emphasis} />
+          </Marker>
+        );
+      })}
 
       {draft && (
         <Marker
@@ -109,21 +128,31 @@ export const MapView = forwardRef<MapHandle, MapViewProps>(function MapView(
   );
 });
 
-function SpotPin({ spot, selected }: { spot: Spot; selected: boolean }) {
+function SpotPin({ spot, emphasis }: { spot: Spot; emphasis: Emphasis }) {
   const color = spot.status === 'reviewed' ? '#ff6a2b' : '#3b88f5';
-  const scale = selected ? 1.25 : 1;
+  const scale = emphasis === 'selected' ? 1.3 : emphasis === 'faded' ? 0.78 : 1;
+  const opacity = emphasis === 'faded' ? 0.4 : 1;
   return (
     <button
       aria-label={spot.name}
-      className="grid place-items-center transition-transform"
-      style={{ transform: `scale(${scale})` }}
+      className="grid place-items-center transition-all duration-300 ease-out"
+      style={{ transform: `scale(${scale})`, opacity }}
     >
-      <svg width="30" height="38" viewBox="0 0 30 38" className="drop-shadow-[0_4px_6px_rgba(0,0,0,0.5)]">
+      <svg
+        width="30"
+        height="38"
+        viewBox="0 0 30 38"
+        className={
+          emphasis === 'selected'
+            ? 'drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]'
+            : 'drop-shadow-[0_4px_6px_rgba(0,0,0,0.5)]'
+        }
+      >
         <path
           d="M15 1C7.8 1 2 6.8 2 14c0 8.4 11 22 13 22s13-13.6 13-22C28 6.8 22.2 1 15 1Z"
           fill={color}
           stroke="white"
-          strokeWidth="2"
+          strokeWidth={emphasis === 'selected' ? 2.5 : 2}
         />
         <circle cx="15" cy="14" r="5" fill="white" />
       </svg>

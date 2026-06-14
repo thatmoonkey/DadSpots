@@ -11,6 +11,7 @@ import {
   selectVisibleSpots,
   type FilterKey,
 } from '../store/useAppStore';
+import { distanceKm } from '../data/scoring';
 
 export function MapHome() {
   const navigate = useNavigate();
@@ -27,6 +28,7 @@ export function MapHome() {
     query,
     selectedSpotId,
     userLocation,
+    mapCenter,
     setFilter,
     setQuery,
     selectSpot,
@@ -45,24 +47,46 @@ export function MapHome() {
     } as Record<FilterKey, number>;
   }, [spots]);
 
-  // Keep a selected spot pinned to the top of the list for quick access.
-  const ordered = useMemo(() => {
-    if (!selectedSpotId) return visible;
-    const sel = visible.find((s) => s.id === selectedSpotId);
-    if (!sel) return visible;
-    return [sel, ...visible.filter((s) => s.id !== selectedSpotId)];
-  }, [visible, selectedSpotId]);
+  // The currently focused spot (selected directly on the map or in the shelf).
+  const selectedSpot = useMemo(
+    () => (selectedSpotId ? spots.find((s) => s.id === selectedSpotId) : undefined),
+    [spots, selectedSpotId],
+  );
 
-  // Tapping a pin opens the full spot detail.
-  const handlePinClick = (id: string) => navigate(`/spot/${id}`);
+  // What the shelf shows: only the selected spot's card when one is focused,
+  // otherwise the filtered/searched list.
+  const shelfSpots = useMemo(() => {
+    if (selectedSpot) {
+      const center = userLocation ?? mapCenter;
+      return [{ ...selectedSpot, distance: distanceKm(center, selectedSpot) }];
+    }
+    return visible;
+  }, [selectedSpot, visible, userLocation, mapCenter]);
 
-  // Tapping a list row recenters the map on that spot and collapses the sheet
-  // so the pin is visible (tap the pin to open its detail).
-  const handleRowClick = (id: string) => {
+  // Focus a spot: recenter, highlight its pin (fading the rest) and reduce the
+  // shelf to just its card.
+  const focusSpot = (id: string) => {
     const s = spots.find((x) => x.id === id);
     if (s) mapRef.current?.flyTo({ lat: s.lat, lng: s.lng }, 14);
     selectSpot(id);
     setExpanded(false);
+  };
+
+  // Tapping a card: focus it; tapping the already-focused card opens its detail.
+  const handleCardClick = (id: string) => {
+    if (id === selectedSpotId) navigate(`/spot/${id}`);
+    else focusSpot(id);
+  };
+
+  // Tapping the map background clears the focused pin.
+  const handleBackgroundClick = () => {
+    if (selectedSpotId) selectSpot(null);
+  };
+
+  // Changing the filter clears any single-pin focus.
+  const handleFilterChange = (f: FilterKey) => {
+    selectSpot(null);
+    setFilter(f);
   };
 
   // Measure the search + chips bar so the expanded sheet stops just below it.
@@ -81,7 +105,7 @@ export function MapHome() {
     const s = spots.find((x) => x.id === selectedSpotId);
     if (s) {
       const t = setTimeout(() => mapRef.current?.flyTo({ lat: s.lat, lng: s.lng }, 14), 250);
-      setExpanded(true);
+      setExpanded(false);
       return () => clearTimeout(t);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -108,8 +132,10 @@ export function MapHome() {
         className="absolute inset-0"
         spots={spots.filter((s) => s.published)}
         selectedId={selectedSpotId}
+        filter={filter}
         userLocation={userLocation}
-        onSpotClick={handlePinClick}
+        onSpotClick={focusSpot}
+        onMapClick={handleBackgroundClick}
         onMoveEnd={setMapCenter}
       />
 
@@ -127,7 +153,7 @@ export function MapHome() {
           />
         </div>
         <div className="pointer-events-auto">
-          <FilterChips value={filter} counts={counts} onChange={setFilter} />
+          <FilterChips value={filter} counts={counts} onChange={handleFilterChange} />
         </div>
       </div>
 
@@ -136,27 +162,46 @@ export function MapHome() {
         onExpandedChange={setExpanded}
         topInset={topInset}
         header={
-          <div className="flex items-end justify-between pb-3">
-            <h2 className="text-lg font-bold text-white">Nearby Spots</h2>
-            <span className="text-sm text-muted">{ordered.length} places</span>
-          </div>
+          selectedSpot ? (
+            <div className="flex items-center justify-between pb-3">
+              <h2 className="truncate pr-2 text-lg font-bold text-white">
+                {selectedSpot.name}
+              </h2>
+              <button
+                onClick={() => selectSpot(null)}
+                className="shrink-0 text-sm font-semibold text-dad"
+              >
+                Show all
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-end justify-between pb-3">
+              <h2 className="text-lg font-bold text-white">Nearby Spots</h2>
+              <span className="text-sm text-muted">{shelfSpots.length} places</span>
+            </div>
+          )
         }
       >
         <div className="space-y-2.5">
-          {ordered.length === 0 && (
+          {shelfSpots.length === 0 && (
             <p className="px-1 py-8 text-center text-sm text-muted">
               No spots match. Try a different filter or search.
             </p>
           )}
-          {ordered.map((s) => (
+          {shelfSpots.map((s) => (
             <SpotListRow
               key={s.id}
               spot={s}
               distance={s.distance}
               selected={s.id === selectedSpotId}
-              onClick={() => handleRowClick(s.id)}
+              onClick={() => handleCardClick(s.id)}
             />
           ))}
+          {selectedSpot && (
+            <p className="px-1 pt-1 text-center text-xs text-muted">
+              Tap the card for full details · tap the map to clear
+            </p>
+          )}
         </div>
       </BottomSheet>
 
