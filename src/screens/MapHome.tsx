@@ -63,20 +63,29 @@ export function MapHome() {
     return visible;
   }, [selectedSpot, visible, userLocation, mapCenter]);
 
-  // Focus a spot: recenter, highlight its pin (fading the rest) and reduce the
-  // shelf to just its card.
-  const focusSpot = (id: string) => {
-    const s = spots.find((x) => x.id === id);
-    if (s) mapRef.current?.flyTo({ lat: s.lat, lng: s.lng }, 14);
+  // Focus a spot: highlight its pin (fading the rest) and reduce the shelf to
+  // just its card. Optionally recenter the map on it.
+  const focusSpot = (id: string, recenter: boolean) => {
+    if (recenter) {
+      const s = spots.find((x) => x.id === id);
+      if (s) mapRef.current?.flyTo({ lat: s.lat, lng: s.lng }, 14);
+    }
     selectSpot(id);
     setExpanded(false);
   };
 
-  // Tapping a pin or its card: focus it; tapping the already-focused one opens
-  // its detail.
-  const handleSpotTap = (id: string) => {
+  // Tapping a pin: focus it IN PLACE (no recenter, so a second tap lands on the
+  // same pin); tapping the already-focused pin opens its detail.
+  const handlePinTap = (id: string) => {
     if (id === selectedSpotId) navigate(`/spot/${id}`);
-    else focusSpot(id);
+    else focusSpot(id, false);
+  };
+
+  // Tapping a card: focus + recenter (the pin may be off-screen); tapping the
+  // already-focused card opens its detail.
+  const handleCardTap = (id: string) => {
+    if (id === selectedSpotId) navigate(`/spot/${id}`);
+    else focusSpot(id, true);
   };
 
   // Tapping the map background clears the focused pin.
@@ -135,7 +144,7 @@ export function MapHome() {
         selectedId={selectedSpotId}
         filter={filter}
         userLocation={userLocation}
-        onSpotClick={handleSpotTap}
+        onSpotClick={handlePinTap}
         onMapClick={handleBackgroundClick}
         onMoveEnd={setMapCenter}
       />
@@ -195,7 +204,7 @@ export function MapHome() {
               spot={s}
               distance={s.distance}
               selected={s.id === selectedSpotId}
-              onClick={() => handleSpotTap(s.id)}
+              onClick={() => handleCardTap(s.id)}
             />
           ))}
           {selectedSpot && (
